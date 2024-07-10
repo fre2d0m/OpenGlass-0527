@@ -39,7 +39,7 @@ class ServerHandler: public BLEServerCallbacks
     BLEDevice::startAdvertising();
   }
 };
-miaomi
+
 class MessageHandler: public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param)
