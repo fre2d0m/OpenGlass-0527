@@ -5,6 +5,7 @@ import { toBase64Image } from '../utils/base64';
 import { Agent } from '../agent/Agent';
 import { InvalidateSync } from '../utils/invalidateSync';
 import { textToSpeech } from '../modules/openai';
+import {useState} from "react";
 
 function usePhotos(device: BluetoothRemoteGATTServer) {
 
@@ -13,11 +14,10 @@ function usePhotos(device: BluetoothRemoteGATTServer) {
     const [subscribed, setSubscribed] = React.useState<boolean>(false);
     React.useEffect(() => {
         (async () => {
-
+            console.log('Begin photo subscription')
             let previousChunk = -1;
             let buffer: Uint8Array = new Uint8Array(0);
             function onChunk(id: number | null, data: Uint8Array) {
-
                 // Resolve if packet is the first one
                 if (previousChunk === -1) {
                     if (id === null) {
@@ -32,15 +32,14 @@ function usePhotos(device: BluetoothRemoteGATTServer) {
                     if (id === null) {
                         console.log('Photo received', buffer);
                         rotateImage(buffer, '270').then((rotated) => {
-                            console.log('Rotated photo', rotated);
                             setPhotos((p) => [...p, rotated]);
                         });
                         previousChunk = -1;
                         return;
                     } else {
                         if (id !== previousChunk + 1) {
+                            console.error('Invalid chunk, current photo is missing, you can restart device.', id, previousChunk);
                             previousChunk = -1;
-                            console.error('Invalid chunk', id, previousChunk);
                             return;
                         }
                         previousChunk = id;
@@ -57,9 +56,12 @@ function usePhotos(device: BluetoothRemoteGATTServer) {
             await photoCharacteristic.startNotifications();
             setSubscribed(true);
             photoCharacteristic.addEventListener('characteristicvaluechanged', (e) => {
-                let value = (e.target as BluetoothRemoteGATTCharacteristic).value!;
+                const characteristic = (e.target as BluetoothRemoteGATTCharacteristic);
+                let value = characteristic.value!;
                 let array = new Uint8Array(value.buffer);
+                // end of transmission
                 if (array[0] == 0xff && array[1] == 0xff) {
+                    console.log('New photo transmission complete');
                     onChunk(null, new Uint8Array());
                 } else {
                     let packetId = array[0] + (array[1] << 8);
@@ -77,7 +79,6 @@ export const DeviceView = React.memo((props: { device: BluetoothRemoteGATTServer
     const [subscribed, photos] = usePhotos(props.device);
     const agent = React.useMemo(() => new Agent(), []);
     const agentState = agent.use();
-
     // Background processing agent
     const processedPhotos = React.useRef<Uint8Array[]>([]);
     const sync = React.useMemo(() => {

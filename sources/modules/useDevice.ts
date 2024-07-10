@@ -15,19 +15,18 @@ export function useDevice(): [BluetoothRemoteGATTServer | null, () => Promise<vo
                 filters: [{ name: 'OpenGlass' }],
                 optionalServices: ['19B10000-E8F2-537E-4F6C-D104768A1214'.toLowerCase()],
             });
-
             // Connect to gatt
             let gatt: BluetoothRemoteGATTServer = await connected.gatt!.connect();
-
             // Update state
             deviceRef.current = gatt;
             setDevice(gatt);
-
+            console.log('Connected to device', gatt.device.name)
             // Reset on disconnect (avoid loosing everything on disconnect)
-            // connected.ongattserverdisconnected = () => {
-            //     deviceRef.current = null;
-            //     setDevice(null);
-            // }
+            connected.ongattserverdisconnected = (e) => {
+                deviceRef.current = null;
+                setDevice(null);
+                console.log('Disconnected from device')
+            }
         } catch (e) {
             // Handle error
             console.error(e);

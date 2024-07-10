@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { AsyncLock } from "../utils/lock";
-import { imageDescription, llamaFind } from "./imageDescription";
-import { startAudio } from '../modules/openai';
+import {AsyncLock} from "../utils/lock";
+import {imageDescription, openAIFind} from "./imageDescription";
+import {startAudio} from '../modules/openai';
 
 type AgentState = {
     lastDescription?: string;
@@ -41,7 +41,7 @@ export class Agent {
 
     async answer(question: string) {
         try {
-            startAudio()
+            await startAudio()
         } catch(error) {
             console.log("Failed to start audio")
         }
@@ -58,8 +58,7 @@ export class Agent {
                 combined += p.description;
                 i++;
             }
-            let answer = await llamaFind(question, combined);
-            this.#state.answer = answer;
+            this.#state.answer = await openAIFind(question, combined);
             this.#state.loading = false;
             this.#notify();
         });

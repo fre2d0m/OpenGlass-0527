@@ -52,8 +52,8 @@ Follow these steps to set up OpenGlass:
 
 1. Clone the OpenGlass repository and install the dependencies:
    ```
-   git clone https://github.com/BasedHardware/openglass.git
-   cd openglass
+   git clone git@github.com:fre2d0m/OpenGlass-0527.git
+   cd OpenGlass-0527
    npm install
    ```
    You can also use **yarn** to install, by doing
@@ -61,13 +61,9 @@ Follow these steps to set up OpenGlass:
    yarn install
    ```
 
-3. Add API keys for Groq and OpenAI in the `keys.ts` file located at [https://github.com/BasedHardware/OpenGlass/blob/main/sources/keys.ts](https://github.com/BasedHardware/OpenGlass/blob/main/sources/keys.ts).
+3. Add API keys for OpenAI in the `keys.ts` file located at [https://github.com/BasedHardware/OpenGlass/blob/main/sources/keys.ts](https://github.com/BasedHardware/OpenGlass/blob/main/sources/keys.ts).
 
-4. For Ollama, self-host the REST API from the repository at [https://github.com/ollama/ollama](https://github.com/ollama/ollama) and add the URL to the `keys.ts` file. The URL should be http://localhost:11434/api/chat
-5. go to terminal and type "ollama pull moondream:1.8b-v2-fp16"
-
-
-6. Start the application:
+4. Start the application:
    ```
    npm start
    ```
@@ -82,3 +78,12 @@ Follow these steps to set up OpenGlass:
 ## License
 
 This project is licensed under the MIT License.
+
+## Known Issues
+
+1. When the Bluetooth is disconnected and connected several times, the packetId of the image data cannot be connected, Invalid chunkId, in this case, you can try to restart the device
+2. If no error is reported and the serial port has no output, restart the device or reconnect the Bluetooth
+
+Possible solutions:
+
+1. Each photo data add unique file id(like timestamp), and check the file id when receive the data, if the file id is not the same, discard the data.
