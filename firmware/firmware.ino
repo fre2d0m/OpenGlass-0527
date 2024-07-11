@@ -270,5 +270,5 @@ void loop() {
     }
 
     // 延迟
-    delay(4);
+    delay(10);
 }
