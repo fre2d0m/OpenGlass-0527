@@ -22,7 +22,6 @@ export class Agent {
             // Append photos
             let lastDescription: string | null = null;
             for (let p of photos) {
-                console.log('Processing photo', p.length);
                 let description = await imageDescription(p);
                 console.log('Description', description);
                 this.#photos.push({ photo: p, description });

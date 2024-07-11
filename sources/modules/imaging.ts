@@ -2,6 +2,7 @@ export function rotateImage(src: Uint8Array, angle: '90' | '180' | '270') {
     return new Promise<Uint8Array>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
+            console.log('Image loaded, rotating and converting to blob');
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d')!;
             canvas.width = img.height;

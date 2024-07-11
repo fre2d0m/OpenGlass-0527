@@ -6,6 +6,16 @@ export function useDevice(): [BluetoothRemoteGATTServer | null, () => Promise<vo
     let deviceRef = React.useRef<BluetoothRemoteGATTServer | null>(null);
     let [device, setDevice] = React.useState<BluetoothRemoteGATTServer | null>(null);
 
+    // Function to disconnect and clean up
+    const disconnectAndCleanup = React.useCallback(() => {
+        if (deviceRef.current && deviceRef.current.connected) {
+            console.log('Disconnecting from device');
+            deviceRef.current.disconnect();
+        }
+        deviceRef.current = null;
+        setDevice(null);
+    }, []);
+
     // Create callback
     const doConnect = React.useCallback(async () => {
         try {
@@ -32,7 +42,20 @@ export function useDevice(): [BluetoothRemoteGATTServer | null, () => Promise<vo
             console.error(e);
         }
     }, [device]);
+    // Effect to handle page unload
+    React.useEffect(() => {
+        const handleBeforeUnload = () => {
+            disconnectAndCleanup();
+        };
 
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        // Cleanup function
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            disconnectAndCleanup();
+        };
+    }, [disconnectAndCleanup]);
     // Return
     return [device, doConnect];
 }

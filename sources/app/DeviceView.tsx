@@ -15,39 +15,24 @@ function usePhotos(device: BluetoothRemoteGATTServer) {
     React.useEffect(() => {
         (async () => {
             console.log('Begin photo subscription')
-            let previousChunk = -1;
-            let buffer: Uint8Array = new Uint8Array(0);
-            function onChunk(id: number | null, data: Uint8Array) {
-                // Resolve if packet is the first one
-                if (previousChunk === -1) {
-                    if (id === null) {
-                        return;
-                    } else if (id === 0) {
-                        previousChunk = 0;
-                        buffer = new Uint8Array(0);
-                    } else {
-                        return;
-                    }
-                } else {
-                    if (id === null) {
-                        console.log('Photo received', buffer);
-                        rotateImage(buffer, '270').then((rotated) => {
-                            setPhotos((p) => [...p, rotated]);
-                        });
-                        previousChunk = -1;
-                        return;
-                    } else {
-                        if (id !== previousChunk + 1) {
-                            console.error('Invalid chunk, current photo is missing, you can restart device.', id, previousChunk);
-                            previousChunk = -1;
-                            return;
-                        }
-                        previousChunk = id;
-                    }
+            const bufferPoll: {[key: string]: {id: number, data: Uint8Array}[]} = {};
+            async function onCompleted(fileId: string) {
+                const data = bufferPoll[fileId].sort((a, b) => a.id - b.id);
+                let buffer = new Uint8Array(0);
+                for(const chunk of data) {
+                    buffer = new Uint8Array([...buffer, ...chunk.data]);
                 }
-
-                // Append data
-                buffer = new Uint8Array([...buffer, ...data]);
+                const rotated = await rotateImage(buffer, '270');
+                setPhotos((savedPhotos) => [...savedPhotos, rotated]);
+                delete bufferPoll[fileId];
+            }
+            async function onChunk(fileId: string, id: number, data: Uint8Array) {
+                if (fileId in bufferPoll) {
+                    bufferPoll[fileId].push({id, data});
+                } else {
+                    bufferPoll[fileId] = [{id, data}];
+                }
+                console.log(id, data.length, fileId)
             }
 
             // Subscribe for photo updates
@@ -55,18 +40,21 @@ function usePhotos(device: BluetoothRemoteGATTServer) {
             const photoCharacteristic = await service.getCharacteristic('19b10005-e8f2-537e-4f6c-d104768a1214');
             await photoCharacteristic.startNotifications();
             setSubscribed(true);
-            photoCharacteristic.addEventListener('characteristicvaluechanged', (e) => {
+            photoCharacteristic.addEventListener('characteristicvaluechanged', async (e) => {
                 const characteristic = (e.target as BluetoothRemoteGATTCharacteristic);
                 let value = characteristic.value!;
                 let array = new Uint8Array(value.buffer);
                 // end of transmission
+                let byte3 = array[2];
+                let byte4 = array[3];
+                const fileId = `${byte3.toString(16).padStart(2, '0')}${byte4.toString(16).padStart(2, '0')}`
                 if (array[0] == 0xff && array[1] == 0xff) {
-                    console.log('New photo transmission complete');
-                    onChunk(null, new Uint8Array());
+                    console.log('New photo transmission complete of file: ', fileId);
+                    await onCompleted(fileId);
                 } else {
                     let packetId = array[0] + (array[1] << 8);
-                    let packet = array.slice(2);
-                    onChunk(packetId, packet);
+                    let packet = array.slice(4);
+                    await onChunk(fileId, packetId, packet);
                 }
             });
         })();

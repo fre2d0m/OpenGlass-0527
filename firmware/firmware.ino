@@ -1,7 +1,5 @@
 #define CAMERA_MODEL_XIAO_ESP32S3
 #include <I2S.h>
-// #include "FS.h"
-// #include "SD.h"
 #include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
@@ -91,41 +89,7 @@ void configure_ble() {
   BLEDevice::startAdvertising();
 }
 
-// Save pictures to SD card
-// void photo_share(const char * fileName) {
-//   // Take a photo
-//   camera_fb_t *fb = esp_camera_fb_get();
-//   if (!fb) {
-//     Serial.println("Failed to get camera frame buffer");
-//     return;
-//   }
-//   // Save photo to file
-//   writeFile(SD, fileName, fb->buf, fb->len);
-
-//   // Release image buffer
-//   esp_camera_fb_return(fb);
-
-//   Serial.println("Photo saved to file");
-// }
-
 camera_fb_t *fb;
-// int images_written = 0;
-
-// void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len){
-//     Serial.printf("Writing file: %s\n", path);
-
-//     File file = fs.open(path, FILE_WRITE);
-//     if(!file){
-//         Serial.println("Failed to open file for writing");
-//         return;
-//     }
-//     if(file.write(data, len) == len){
-//         Serial.println("File written");
-//     } else {
-//         Serial.println("Write failed");
-//     }
-//     file.close();
-// }
 
 bool take_photo() {
 
@@ -143,11 +107,6 @@ bool take_photo() {
     return false;
   }
 
-  // Write to SD
-  // char filename[32];
-  // sprintf(filename, "/image_%d.jpg", images_written);
-  // writeFile(SD, filename, fb->buf, fb->len);
-  // images_written++;
 
   return true;
 }
@@ -246,9 +205,10 @@ void setup() {
   Serial.println("Setup");
   Serial.println("Starting BLE...");
   configure_ble();
-  // s_compressed_frame_2 = (uint8_t *) ps_calloc(compressed_buffer_size, sizeof(uint8_t));
-  Serial.println("Starting Microphone...");
-  configure_microphone();
+  s_compressed_frame_2 = (uint8_t *) ps_calloc(compressed_buffer_size, sizeof(uint8_t));
+
+//   Serial.println("Starting Microphone...");
+//   configure_microphone();
   Serial.println("Starting Camera...");
   configure_camera();
   Serial.println("OK");
@@ -259,69 +219,56 @@ unsigned long lastCaptureTime = 0;
 size_t sent_photo_bytes = 0;
 size_t sent_photo_frames = 0;
 bool need_send_photo = false;
+unsigned long photoId = 0; // 照片唯一标识
 
 void loop() {
 
-  // Read from mic
-  size_t bytes_recorded = read_microphone();
-
-  // Push to BLE
-  if (bytes_recorded > 0 && connected) {
-    size_t out_buffer_size = bytes_recorded / 2 + 3;
-    for (size_t i = 0; i < bytes_recorded; i += 2) {
-      int16_t sample = ((s_recording_buffer[i + 1] << 8) | s_recording_buffer[i]) << VOLUME_GAIN;
-      s_compressed_frame[i / 2 + 3] = linear2ulaw(sample);
-    }
-    s_compressed_frame[0] = frame_count & 0xFF;
-    s_compressed_frame[1] = (frame_count >> 8) & 0xFF;
-    s_compressed_frame[2] = 0;
-    audio->setValue(s_compressed_frame, out_buffer_size);
-    audio->notify();
-    frame_count++;
-  }
-
-  // Take a photo
   unsigned long now = millis();
-  if ((now - lastCaptureTime) >= 5000 && !need_send_photo && connected) {
-    if (take_photo()) {
-      need_send_photo = true;
-      sent_photo_bytes = 0;
-      sent_photo_frames = 0;
-      lastCaptureTime = now;
-    }
-  }
 
-  // Push to BLE
-  if (need_send_photo) {
-    size_t remaining = fb->len - sent_photo_bytes;
-    if (remaining > 0) {
-      // Populate buffer
-      s_compressed_frame_2[0] = sent_photo_frames & 0xFF;
-      s_compressed_frame_2[1] = (sent_photo_frames >> 8) & 0xFF;
-      size_t bytes_to_copy = remaining;
-      if (bytes_to_copy > 200) {
-        bytes_to_copy = 200;
+    // 拍摄照片
+    if ((now - lastCaptureTime) >= 5000 && !need_send_photo && connected) {
+      if (take_photo()) {
+        need_send_photo = true;
+        sent_photo_bytes = 0;
+        sent_photo_frames = 0;
+        lastCaptureTime = now;
+        photoId++; // 增加照片ID
+        Serial.printf("Photo %u captured. Size: %u bytes\n", photoId, fb->len);
       }
-      memcpy(&s_compressed_frame_2[2], &fb->buf[sent_photo_bytes], bytes_to_copy);
-
-      // Push to BLE
-      photo->setValue(s_compressed_frame_2, bytes_to_copy + 2);
-      photo->notify();
-      sent_photo_bytes += bytes_to_copy;
-      sent_photo_frames++;
-    } else {
-
-      // End flag
-      s_compressed_frame_2[0] = 0xFF;
-      s_compressed_frame_2[1] = 0xFF;
-      photo->setValue(s_compressed_frame_2, 2);
-      photo->notify();
-
-      Serial.println("Photo sent");
-      need_send_photo = false;
     }
-  }
 
-  // Delay
-  delay(4);
+    // 通过BLE发送照片
+    if (need_send_photo) {
+      size_t remaining = fb->len - sent_photo_bytes;
+      if (remaining > 0) {
+        // 填充缓冲区
+        s_compressed_frame_2[0] = sent_photo_frames & 0xFF;
+        s_compressed_frame_2[1] = (sent_photo_frames >> 8) & 0xFF;
+        s_compressed_frame_2[2] = photoId & 0xFF; // 添加照片ID (低8位)
+        s_compressed_frame_2[3] = (photoId >> 8) & 0xFF; // 添加照片ID (高8位)
+
+        size_t bytes_to_copy = (remaining < 198) ? remaining : 198; // 最多复制198字节,为照片ID留出空间
+        memcpy(&s_compressed_frame_2[4], &fb->buf[sent_photo_bytes], bytes_to_copy);
+
+        // 发送到BLE
+        photo->setValue(s_compressed_frame_2, bytes_to_copy + 4);
+        photo->notify();
+        sent_photo_bytes += bytes_to_copy;
+        sent_photo_frames++;
+      } else {
+        // 结束标志
+        s_compressed_frame_2[0] = 0xFF;
+        s_compressed_frame_2[1] = 0xFF;
+        s_compressed_frame_2[2] = photoId & 0xFF; // 添加照片ID (低8位)
+        s_compressed_frame_2[3] = (photoId >> 8) & 0xFF; // 添加照片ID (高8位)
+        photo->setValue(s_compressed_frame_2, 4);
+        photo->notify();
+
+        Serial.printf("Photo %u sent\n", photoId);
+        need_send_photo = false;
+      }
+    }
+
+    // 延迟
+    delay(4);
 }
